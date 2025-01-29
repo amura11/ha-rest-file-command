@@ -1,6 +1,6 @@
 # REST File Command
 
-A Home Assistant custom integration to upload files to a REST API endpoint using `multipart/form-data`. This integration is a clone of [RESTful Command](https://github.com/home-assistant/core/tree/dev/homeassistant/components/rest_command) with minor modificaitons.
+A Home Assistant custom integration to upload files to a RESTful API endpoint. This integration is a clone of [RESTful Command](https://github.com/home-assistant/core/tree/dev/homeassistant/components/rest_command) with minor modificaitons.
 
 ## Features
 
