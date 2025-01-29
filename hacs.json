@@ -1,0 +1,8 @@
+{
+    "name": "Secret Service",
+    "filename": "secret_service.zip",
+    "hide_default_branch": true,
+    "homeassistant": "2023.7.0",
+    "render_readme": true,
+    "zip_release": true
+}
