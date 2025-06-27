@@ -1,13 +1,17 @@
 # REST File Command
 
-A Home Assistant custom integration to upload files to a RESTful API endpoint. This integration is a clone of [RESTful Command](https://github.com/home-assistant/core/tree/dev/homeassistant/components/rest_command) with minor modificaitons.
+A Home Assistant custom integration to upload files to a RESTful API endpoint. This integration is a clone of [RESTful Command](https://github.com/home-assistant/core/tree/dev/homeassistant/components/rest_command) with minor modifications.
 
 ## Features
 
--   Upload files to REST APIs with `multipart/form-data`.
--   Support for custom headers (e.g., authentication tokens).
+-   Upload files to REST APIs using `multipart/form-data`.
+-   Supports templated URLs, headers, file names, and additional form fields.
+-   Specify a custom field name for the uploaded file (default: `file`).
+-   Dynamically override file name and form fields in service calls using templates.
+-   Supports basic HTTP authentication.
 -   Configurable request timeout (default: 10 seconds).
--   State tracking for the last response and status code.
+-   Verifies SSL certificates by default (optional).
+-   Stores the last response and status code in a variable if requested.
 
 ## 📦Installation📦
 
@@ -38,16 +42,19 @@ A Home Assistant custom integration to upload files to a RESTful API endpoint. T
 
 ## 🔧Configuration🔧
 
-| Name           | Type    | Description                                                           | Required | Default |
-| -------------- | ------- | --------------------------------------------------------------------- | -------- | ------- |
-| `url`          | string  | The URL (supports template) for sending request.                      | ✔        |         |
-| `method`       | string  | HTTP method to use (e.g., `post`, `get`, etc.).                       |          | `post`  |
-| `headers`      | map     | The headers for the requests.                                         |          |         |
-| `username`     | string  | The username for basic HTTP authentication (digest is not supported). |          |         |
-| `password`     | string  | The password for basic HTTP authentication (digest is not supported). |          |         |
-| `timeout`      | number  | Timeout for requests in seconds.                                      |          | `10`    |
-| `content_type` | string  | Content type for the request.                                         |          |         |
-| `verify_ssl`   | boolean | Verify the SSL certificate of the endpoint.                           |          | `true`  |
+| Name              | Type    | Description                                                                      | Required | Default |
+| ----------------- | ------- | -------------------------------------------------------------------------------- | -------- | ------- |
+| `url`             | string  | The URL (supports template) for sending request.                                 | ✔        |         |
+| `method`          | string  | HTTP method to use (e.g., `post`, `get`, etc.).                                  |          | `post`  |
+| `headers`         | map     | The headers for the requests (supports templates).                               |          |         |
+| `username`        | string  | The username for basic HTTP authentication (digest is not supported).            |          |         |
+| `password`        | string  | The password for basic HTTP authentication (digest is not supported).            |          |         |
+| `timeout`         | number  | Timeout for requests in seconds.                                                 |          | `10`    |
+| `content_type`    | string  | Content type for the request.                                                    |          |         |
+| `verify_ssl`      | boolean | Verify the SSL certificate of the endpoint.                                      |          | `true`  |
+| `file_name`       | string  | Default filename to send (supports template). Can be overridden in service call. |          |         |
+| `form_field_name` | string  | The name to use for the file in the form data.                                   |          | `file`  |
+| `form_data`       | map     | Addition form data to be sent in the multipart form (supports templates).        |          |         |
 
 ### Example
 
@@ -64,10 +71,12 @@ rest_file_command:
 
 Calling the configured command(s):
 
-| Name                | Type   | Description                                        | Required |
-| ------------------- | ------ | -------------------------------------------------- | -------- |
-| `file`              | string | Path to the file to upload.                        | ✔        |
-| `response_variable` | string | The name of the variable to put the response into. |          |
+| Name                | Type   | Description                                                                | Required |
+| ------------------- | ------ | -------------------------------------------------------------------------- | -------- |
+| `file`              | string | Path to the file to upload.                                                | ✔        |
+| `file_name`         | string | Override for filename sent in the multipart form data (supports template). |          |
+| `form_data`         | map    | Addition form data to be sent in the multipart form (supports templates).  |          |
+| `response_variable` | string | The name of the variable to put the response into.                         |          |
 
 If `response_variable` is defined, the response from the server will be put in a variable with the following format:
 
@@ -84,11 +93,14 @@ If `response_variable` is defined, the response from the server will be put in a
 - service: rest_file_command.do_the_thing
   response_variable: upload_response
   data:
-    file: /config/www/image.jpg
-- if: "{{ upload_response['status'] == 200 }}"
-    then:
-      - action: notify.mobile_app_iphone
-        data:
-          title: "File uploaded"
-          message: "Returned link: {{ upload_response['url'] }}"
+      file: /config/www/image.jpg
+- choose:
+      - conditions:
+            - condition: template
+              value_template: "{{ upload_response['status'] == 200 }}"
+        sequence:
+            - service: notify.mobile_app_iphone
+              data:
+                  title: "File uploaded"
+                  message: "Returned link: {{ upload_response['url'] }}"
 ```
