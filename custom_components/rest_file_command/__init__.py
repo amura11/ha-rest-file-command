@@ -16,7 +16,6 @@ from homeassistant.const import (
     CONF_HEADERS,
     CONF_METHOD,
     CONF_PASSWORD,
-    CONF_PAYLOAD,
     CONF_TIMEOUT,
     CONF_URL,
     CONF_USERNAME,
@@ -49,6 +48,9 @@ SUPPORT_REST_METHODS = ["get", "patch", "post", "put", "delete"]
 
 CONF_CONTENT_TYPE = "content_type"
 CONF_FILE = "file"
+CONF_FILE_NAME = "file_name"
+CONF_FORM_DATA = "form_data"
+CONF_FORM_FIELD_NAME = "form_field_name"
 
 COMMAND_SCHEMA = vol.Schema(
     {
@@ -62,12 +64,17 @@ COMMAND_SCHEMA = vol.Schema(
         vol.Optional(CONF_TIMEOUT, default=DEFAULT_TIMEOUT): vol.Coerce(int),
         vol.Optional(CONF_CONTENT_TYPE): cv.string,
         vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): cv.boolean,
+        vol.Optional(CONF_FORM_FIELD_NAME, default="file"): cv.string,
+        vol.Optional(CONF_FILE_NAME): cv.template,
+        vol.Optional(CONF_FORM_DATA): vol.Schema({cv.string: cv.template}),
     }
 )
 
 CALL_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_FILE): cv.string
+        vol.Required(CONF_FILE): cv.string,
+        vol.Optional(CONF_FILE_NAME): cv.template,
+        vol.Optional(CONF_FORM_DATA): vol.Schema({cv.string: cv.template}),
     }
 )
 
@@ -104,6 +111,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         timeout = command_config[CONF_TIMEOUT]
         method = command_config[CONF_METHOD]
         template_url = command_config[CONF_URL]
+        template_file_name = command_config[CONF_FILE_NAME]
+        form_field_name = command_config.get(CONF_FORM_FIELD_NAME, "file")
 
         auth = None
         if CONF_USERNAME in command_config:
@@ -112,6 +121,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             auth = aiohttp.BasicAuth(username, password=password)
 
         template_headers = command_config.get(CONF_HEADERS, {})
+        template_form_data = command_config.get(CONF_FORM_DATA, {})
 
         content_type = command_config.get(CONF_CONTENT_TYPE)
 
@@ -121,7 +131,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 variables=service.data, parse_result=False
             )
 
-            file_path = service.data.get("file")
+            file_path = service.data.get(CONF_FILE)
             if not os.path.exists(file_path):
                 raise HomeAssistantError(f"File not found: {file_path}")
 
@@ -134,12 +144,46 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             if content_type:
                 headers[hdrs.CONTENT_TYPE] = content_type
 
+            file_name = os.path.basename(file_path)
+
+            if template_file_name:
+                file_name = template_file_name.async_render(
+                    variables=service.data, parse_result=False
+                )
+
+            override_template_file_name = service.data.get(CONF_FILE_NAME)
+            if override_template_file_name:
+                file_name = override_template_file_name.async_render(
+                    variables=service.data, parse_result=False
+                )
+
+            # Build the dict of static form data templates if they exist
+            form_data_templates = dict(template_form_data)
+
+            # Merge the static templates with any provided in the call
+            service_form_data = service.data.get(CONF_FORM_DATA, {})
+            form_data_templates.update(service_form_data)
+
+            form_data = aiohttp.FormData()
+            for field_name, template_value in form_data_templates.items():
+                field_value = template_value.async_render(
+                    variables=service.data, parse_result=False
+                )
+
+                form_data.add_field(field_name, field_value)
+
             try:
-                file = {"file": open(file_path, "rb")}
+                with open(file_path, "rb") as file_handle:
+                    form_data.add_field(
+                        form_field_name,
+                        file_handle,
+                        filename=file_name,
+                        content_type=content_type or "application/octet-stream"
+                    )
 
                 async with getattr(websession, method)(
                     request_url,
-                    data=file,
+                    data=form_data,
                     auth=auth,
                     headers=headers or None,
                     timeout=timeout,
@@ -212,13 +256,33 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
         service_schema = {
             "name": name,
-            "description": f"Sends a file to the RESTful API endpoint via a {method.upper()} request.",
+            "description": (
+                f"Sends a file to the RESTful API endpoint via a {method.upper()} request. "
+                f"The local file is read from disk and sent as multipart form data. "
+                f"The form field name used is '{form_field_name}'. "
+                "You can optionally override the filename that is sent in the form data."
+            ),
             "fields": {
                 "file": {
-                    "name": "Upload File Path",
-                    "description": "The path to the file to upload",
                     "required": True,
-                    "example": "/config/www/image.jpg"
+                    "description": "Path to the file to upload",
+                    "example": "/config/www/image.jpg",
+                    "selector": {"text": {}},
+                },
+                "file_name": {
+                    "required": False,
+                    "description": "Optional override for filename sent in multipart form data",
+                    "example": "upload_{{ now().strftime('%Y%m%d') }}.log",
+                    "selector": {"text": {}},
+                },
+                "form_data": {
+                    "required": False,
+                    "description": "Optional key-value pairs to send as additional form fields. Values can be Jinja templates.",
+                    "example": {
+                        "sensor_id": "{{ states('sensor.device_id') }}",
+                        "note": "Upload triggered from automation"
+                    },
+                    "selector": {"object": {}}
                 }
             }
         }
