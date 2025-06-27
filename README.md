@@ -58,6 +58,8 @@ A Home Assistant custom integration to upload files to a RESTful API endpoint. T
 
 ### Example
 
+**Basic**
+
 ```yaml
 rest_file_command:
     do_the_thing:
@@ -65,6 +67,27 @@ rest_file_command:
         method: put
         content_type: "application/x-www-form-urlencoded"
         timeout: 5
+```
+
+**Kitchen Sink**
+
+```yaml
+rest_file_command:
+    do_the_thing:
+        url: "https://example.com/upload/{{ device_id }}"
+        method: post
+        timeout: 15
+        content_type: "application/octet-stream"
+        verify_ssl: true
+        headers:
+            X-Device-ID: "{{ device_id }}"
+        username: !secret api_user
+        password: !secret api_password
+        file_name: "snapshot_{{ now().strftime('%Y%m%d_%H%M%S') }}.jpg"
+        form_field_name: "snapshot_file"
+        form_data:
+            description: "Snapshot taken at {{ now().isoformat() }}"
+            user_id: "{{ user_id }}"
 ```
 
 ## 📄Usage📄

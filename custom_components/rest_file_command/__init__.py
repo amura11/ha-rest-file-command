@@ -9,6 +9,7 @@ from json.decoder import JSONDecodeError
 from typing import Any
 
 import aiohttp
+import functools
 from aiohttp import hdrs
 import voluptuous as vol
 
@@ -111,7 +112,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         timeout = command_config[CONF_TIMEOUT]
         method = command_config[CONF_METHOD]
         template_url = command_config[CONF_URL]
-        template_file_name = command_config[CONF_FILE_NAME]
         form_field_name = command_config.get(CONF_FORM_FIELD_NAME, "file")
 
         auth = None
@@ -120,6 +120,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             password = command_config.get(CONF_PASSWORD, "")
             auth = aiohttp.BasicAuth(username, password=password)
 
+        template_file_name = command_config.get(CONF_FILE_NAME)
         template_headers = command_config.get(CONF_HEADERS, {})
         template_form_data = command_config.get(CONF_FORM_DATA, {})
 
@@ -172,14 +173,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
                 form_data.add_field(field_name, field_value)
 
+            file_handle = await hass.async_add_executor_job(
+                functools.partial(open, file_path, "rb")
+            )
+
             try:
-                with open(file_path, "rb") as file_handle:
-                    form_data.add_field(
-                        form_field_name,
-                        file_handle,
-                        filename=file_name,
-                        content_type=content_type or "application/octet-stream"
-                    )
+                form_data.add_field(
+                    form_field_name,
+                    file_handle,
+                    filename=file_name,
+                    content_type=content_type or "application/octet-stream"
+                )
 
                 async with getattr(websession, method)(
                     request_url,
@@ -229,6 +233,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                                 "decoding_type": "text",
                             },
                         ) from err
+
                     return {"content": _content, "status": response.status}
 
             except TimeoutError as err:
@@ -245,12 +250,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     translation_key="client_error",
                     translation_placeholders={"request_url": request_url},
                 ) from err
+            
+            finally:
+                file_handle.close()
+
 
         # register services
         hass.services.async_register(
             DOMAIN,
             name,
             async_service_handler,
+            schema=CALL_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
