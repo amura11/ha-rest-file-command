@@ -1,16 +1,1 @@
-__dynamic__:
-    name: Dynamically registered service
-    description: |
-        All services under `rest_file_command` are registered dynamically based on your YAML configuration.
-        The available services depend on the keys you define under `rest_file_command:` in your configuration.
-    fields:
-        file:
-            description: Path to the file to upload
-            example: /config/www/image.jpg
-        file_name:
-            description: Override filename sent in multipart form data (supports template)
-            example: upload_{{ now().strftime('%Y%m%d') }}.log
-        form_data:
-            description: Additional form fields (key-value pairs, values support templates)
-            example:
-                sensor_id: "{{ states('sensor.temp') }}"
+reload:
